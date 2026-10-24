@@ -157,28 +157,27 @@ export const enableWebPush = async (
  * each attempt with "forbidden remote address", so remove them with the user's
  * own session — no access token from the user is needed for this.
  */
-const isStalePusher = (pusher: IPusher): boolean => {
+const isStalePusher = (pusher: IPusher, gatewayUrl: string): boolean => {
   const dataUrl = (pusher.data as Record<string, unknown> | undefined)?.url;
   const target = typeof dataUrl === 'string' ? dataUrl : pusher.url;
+  // No URL at all (email pusher, app pushers) is not ours to judge.
   if (typeof target !== 'string' || target === '') return false;
   try {
-    const host = new URL(target).hostname;
-    if (host === 'ntfy.sh' || host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
-      return true;
-    }
-    return (
-      host.startsWith('10.') ||
-      host.startsWith('192.168.') ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
-    );
+    // Exactly this deployment's gateway is current; every other HTTP pusher is a
+    // leftover (retired relay, ntfy topics, dead hosts) and only produces
+    // "forbidden remote address" retries on the homeserver.
+    return new URL(target).host !== new URL(gatewayUrl).host;
   } catch {
-    return false;
+    return true;
   }
 };
 
-export const removeStalePushers = async (mx: MatrixClient): Promise<number> => {
+export const removeStalePushers = async (
+  mx: MatrixClient,
+  gatewayUrl: string
+): Promise<number> => {
   const pushers = (await mx.getPushers())?.pushers ?? [];
-  const stale = pushers.filter(isStalePusher);
+  const stale = pushers.filter((pusher: IPusher) => isStalePusher(pusher, gatewayUrl));
   for (const pusher of stale) {
     await mx
       .setPusher({
@@ -215,7 +214,7 @@ export const useWebPush = (): void => {
     (async () => {
       // Best effort: old pushers pointing at retired hosts.
       try {
-        await removeStalePushers(mx);
+        await removeStalePushers(mx, webPush.gatewayUrl);
       } catch {
         // listing/removing pushers must never block the subscription
       }
