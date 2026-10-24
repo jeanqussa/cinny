@@ -10,6 +10,8 @@ import { getNotificationState, usePermissionState } from '../../../hooks/usePerm
 import { useEmailNotifications } from '../../../hooks/useEmailNotifications';
 import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
+import { useClientConfig } from '../../../hooks/useClientConfig';
+import { enableWebPush } from '../../../hooks/useWebPush';
 
 function EmailNotification() {
   const mx = useMatrixClient();
@@ -85,6 +87,8 @@ function EmailNotification() {
 }
 
 export function SystemNotification() {
+  const mx = useMatrixClient();
+  const clientConfig = useClientConfig();
   const notifPermission = usePermissionState('notifications', getNotificationState());
   const [showNotifications, setShowNotifications] = useSetting(settingsAtom, 'showNotifications');
   const [isNotificationSounds, setIsNotificationSounds] = useSetting(
@@ -93,6 +97,12 @@ export function SystemNotification() {
   );
 
   const requestNotificationPermission = () => {
+    // With a Web Push gateway configured, granting the permission and creating the
+    // subscription must happen in one gesture: some browsers allow a single prompt.
+    if (clientConfig.webPush) {
+      enableWebPush(mx, clientConfig.webPush).catch(() => undefined);
+      return;
+    }
     window.Notification.requestPermission();
   };
 

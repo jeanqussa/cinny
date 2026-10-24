@@ -182,6 +182,25 @@ export const UsernameBold = style({
 export const MessageTextBody = recipe({
   base: {
     wordBreak: 'break-word',
+    // Tables in formatted messages: Matrix clients do not style them, so give
+    // cells an explicit border (theme tokens, so it follows light/dark) and a
+    // little padding, otherwise a table renders as borderless columns.
+    // Horizontal scrolling lives on the wrapper the html parser puts around
+    // every <table> (styles/CustomHtml.css.ts → TableScroll).
+    '& table': {
+      borderCollapse: 'collapse',
+      // Keep the columns at their intrinsic width so a long table scrolls in the
+      // TableScroll wrapper instead of squashing cells to fit the bubble.
+      width: 'max-content',
+    },
+    '& th, & td': {
+      border: `${config.borderWidth.B300} solid ${color.Surface.ContainerLine}`,
+      padding: `${config.space.S100} ${config.space.S200}`,
+    },
+    '& th': {
+      backgroundColor: color.Surface.ContainerActive,
+      color: color.Surface.OnContainer,
+    },
   },
   variants: {
     preWrap: {

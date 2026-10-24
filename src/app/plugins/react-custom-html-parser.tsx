@@ -441,6 +441,14 @@ export const getReactCustomHtmlParser = (
           }
         }
 
+        if (name === 'table') {
+          return (
+            <div className={css.TableScroll}>
+              <table {...props}>{domToReact(children, opts)}</table>
+            </div>
+          );
+        }
+
         if (name === 'a' && testMatrixTo(tryDecodeURIComponent(props.href))) {
           const content = children.find((child) => !(child instanceof DOMText))
             ? undefined

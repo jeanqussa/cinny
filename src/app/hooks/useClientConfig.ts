@@ -18,7 +18,18 @@ export type ClientConfig = {
   };
 
   hashRouter?: HashRouterConfig;
-};
+
+  /**
+   * Web Push (PWA background notifications): the gateway to register every
+   * device with, the app_id it is configured for, and the VAPID application
+   * server key the browser subscription must be created with.
+   */
+  webPush?: {
+    appId: string;
+    gatewayUrl: string;
+    applicationServerKey: string;
+  };
+}
 
 const ClientConfigContext = createContext<ClientConfig | null>(null);
 

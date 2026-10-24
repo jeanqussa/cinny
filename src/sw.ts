@@ -156,3 +156,69 @@ self.addEventListener('fetch', (event: FetchEvent) => {
     })
   );
 });
+
+type PushPayload = {
+  room_id?: string;
+  event_id?: string;
+  room_name?: string;
+  sender?: string;
+  sender_display_name?: string;
+};
+
+const ICON = '/public/android/android-chrome-192x192.png';
+
+function notificationTarget(data: PushPayload): string {
+  if (!data.room_id) return '/';
+  const room = encodeURIComponent(data.room_id);
+  if (!data.event_id) return `/home/${room}/`;
+  return `/home/${room}/${encodeURIComponent(data.event_id)}/`;
+}
+
+/**
+ * Web Push from Sygnal. The payload carries the room/event ids but never message
+ * content (encrypted rooms cannot be inspected by the homeserver), so the body is
+ * the sender's name over the room title.
+ */
+self.addEventListener('push', (event: PushEvent) => {
+  if (!event.data) return;
+
+  let data: PushPayload;
+  try {
+    data = event.data.json() as PushPayload;
+  } catch {
+    data = {};
+  }
+
+  const title = data.room_name || data.sender_display_name || data.sender || 'New message';
+  const body = data.sender_display_name || data.sender || 'New message';
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: ICON,
+      badge: ICON,
+      tag: data.room_id || undefined,
+      data: notificationTarget(data),
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event: NotificationEvent) => {
+  event.notification.close();
+  const target = typeof event.notification.data === 'string' ? event.notification.data : '/';
+
+  event.waitUntil(
+    (async () => {
+      const url = new URL(target, self.location.origin).href;
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const existing = windows.find((w) => w.url.startsWith(self.location.origin));
+      if (existing) {
+        await (existing as WindowClient).navigate(url);
+        await existing.focus();
+        return;
+      }
+      await self.clients.openWindow(url);
+    })()
+  );
+});
+

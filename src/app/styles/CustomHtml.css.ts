@@ -259,3 +259,14 @@ export const highlightText = style([
     color: 'black',
   },
 ]);
+
+// A table cannot scroll itself: it needs a scroll container, otherwise a wide
+// table squashes its columns (or overflows the message bubble). Chat tables come
+// from bridge/bot HTML, so wrap every rendered <table> in this.
+export const TableScroll = style([
+  DefaultReset,
+  {
+    maxWidth: '100%',
+    overflowX: 'auto',
+  },
+]);

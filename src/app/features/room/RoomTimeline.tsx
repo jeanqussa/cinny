@@ -496,6 +496,11 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
   const [atBottom, setAtBottom] = useState<boolean>(true);
   const atBottomRef = useRef(atBottom);
   atBottomRef.current = atBottom;
+  // The intersection observer only fires when the anchor enters or leaves the
+  // viewport, but `atBottom` also depends on the timeline becoming live-linked
+  // again — which can happen while the anchor never moves. Remember the last
+  // observation so that transition can be re-evaluated below.
+  const anchorIntersectingRef = useRef<boolean>(true);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollToBottomRef = useRef({
@@ -731,7 +736,10 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         const target = atBottomAnchorRef.current;
         if (!target) return;
         const targetEntry = getIntersectionObserverEntry(target, entries);
-        if (targetEntry) debounceSetAtBottom(targetEntry);
+        if (targetEntry) {
+          anchorIntersectingRef.current = targetEntry.isIntersecting;
+          debounceSetAtBottom(targetEntry);
+        }
         if (targetEntry?.isIntersecting && atLiveEndRef.current) {
           setAtBottom(true);
           if (document.hasFocus()) {
@@ -750,6 +758,15 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     ),
     useCallback(() => atBottomAnchorRef.current, [])
   );
+
+  // A new event re-links the live timeline without moving the scroll position, so
+  // the observer never fires again and the "Jump to Latest" chip used to stick
+  // while the user was already at the bottom. Re-evaluate on that transition.
+  useEffect(() => {
+    if (liveTimelineLinked && rangeAtEnd && anchorIntersectingRef.current) {
+      setAtBottom(true);
+    }
+  }, [liveTimelineLinked, rangeAtEnd]);
 
   useDocumentFocusChange(
     useCallback(
@@ -887,6 +904,10 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       navigateRoom(room.roomId, undefined, { replace: true });
     }
     setTimeline(getInitialTimeline(room));
+    // The click is an explicit "I am at the latest" statement: hide the chip even
+    // if the timeline/observer state disagrees, otherwise a click while already at
+    // the bottom did nothing at all (no scroll to perform, no state change).
+    setAtBottom(true);
     scrollToBottomRef.current.count += 1;
     scrollToBottomRef.current.smooth = false;
   };
