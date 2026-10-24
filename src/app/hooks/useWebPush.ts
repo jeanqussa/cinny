@@ -1,5 +1,5 @@
 import { IPusher, IPusherRequest, MatrixClient } from 'matrix-js-sdk';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useClientConfig } from './useClientConfig';
 import { useMatrixClient } from './useMatrixClient';
 
@@ -7,6 +7,34 @@ export type WebPushConfig = {
   appId: string;
   gatewayUrl: string;
   applicationServerKey: string;
+};
+
+export type WebPushState = 'pending' | 'ok' | 'unsupported' | 'no-config' | 'permission-needed' | 'error';
+export type WebPushStatus = { state: WebPushState; detail?: string };
+
+// Module-level status so the settings page can show why push is not armed; the
+// hook swallows errors to keep the client usable, which otherwise makes a broken
+// gateway indistinguishable from a working one.
+let currentStatus: WebPushStatus = { state: 'pending' };
+const statusListeners = new Set<(status: WebPushStatus) => void>();
+
+const setStatus = (status: WebPushStatus) => {
+  currentStatus = status;
+  statusListeners.forEach((listener) => listener(status));
+};
+
+export const getWebPushStatus = (): WebPushStatus => currentStatus;
+
+export const useWebPushStatus = (): WebPushStatus => {
+  const [status, setLocalStatus] = useState<WebPushStatus>(currentStatus);
+  useEffect(() => {
+    statusListeners.add(setLocalStatus);
+    setLocalStatus(currentStatus);
+    return () => {
+      statusListeners.delete(setLocalStatus);
+    };
+  }, []);
+  return status;
 };
 
 const urlBase64ToUint8Array = (base64: string): Uint8Array => {
@@ -80,6 +108,17 @@ export const registerWebPushPusher = async (
   await mx.setPusher(pusher);
 };
 
+const subscribe = async (config: WebPushConfig): Promise<PushSubscription> => {
+  const registration = await navigator.serviceWorker.ready;
+  return (
+    (await registration.pushManager.getSubscription()) ??
+    (await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(config.applicationServerKey),
+    }))
+  );
+};
+
 /**
  * User-gesture entry point: ask for the permission and subscribe in one step
  * (some browsers only offer a single permission prompt per site).
@@ -93,19 +132,22 @@ export const enableWebPush = async (
   }
   if (!('Notification' in window)) throw new Error('notifications are not supported');
 
+  setStatus({ state: 'pending' });
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') throw new Error(`notification permission ${permission}`);
+  if (permission !== 'granted') {
+    setStatus({ state: 'permission-needed', detail: permission });
+    throw new Error(`notification permission ${permission}`);
+  }
 
-  const registration = await navigator.serviceWorker.ready;
-  const subscription =
-    (await registration.pushManager.getSubscription()) ??
-    (await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(config.applicationServerKey),
-    }));
-
-  await registerWebPushPusher(mx, config, subscription);
-  return subscription;
+  try {
+    const subscription = await subscribe(config);
+    await registerWebPushPusher(mx, config, subscription);
+    setStatus({ state: 'ok', detail: subscription.endpoint.slice(0, 48) });
+    return subscription;
+  } catch (error) {
+    setStatus({ state: 'error', detail: (error as Error).message });
+    throw error;
+  }
 };
 
 /**
@@ -152,35 +194,44 @@ export const removeStalePushers = async (mx: MatrixClient): Promise<number> => {
 /**
  * Keep the pusher in sync on every app start: the subscription can survive while
  * the pusher row on the homeserver was dropped (e.g. after a rejected pushkey).
+ * Each step is guarded on its own so one failure cannot stop the others, and the
+ * outcome is published for the settings page.
  */
 export const useWebPush = (): void => {
   const mx = useMatrixClient();
   const { webPush } = useClientConfig();
 
   useEffect(() => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setStatus({ state: 'unsupported', detail: 'no service worker / PushManager' });
+      return;
+    }
+    if (!webPush) {
+      setStatus({ state: 'no-config', detail: 'config.json has no webPush block' });
+      return;
+    }
 
     let cancelled = false;
     (async () => {
+      // Best effort: old pushers pointing at retired hosts.
       try {
         await removeStalePushers(mx);
-        if (!webPush || cancelled) return;
-        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      } catch {
+        // listing/removing pushers must never block the subscription
+      }
 
-        const registration = await navigator.serviceWorker.ready;
-        // Permission is already granted, so no user gesture is required here: create
-        // the subscription if this browser has none yet (first run after upgrading,
-        // or after the browser dropped it).
-        const subscription =
-          (await registration.pushManager.getSubscription()) ??
-          (await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(webPush.applicationServerKey),
-          }));
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        setStatus({ state: 'permission-needed', detail: Notification?.permission });
+        return;
+      }
+
+      try {
+        const subscription = await subscribe(webPush);
         if (!subscription || cancelled) return;
         await registerWebPushPusher(mx, webPush, subscription);
-      } catch {
-        // A gateway that is down must not break the client.
+        setStatus({ state: 'ok', detail: subscription.endpoint.slice(0, 48) });
+      } catch (error) {
+        setStatus({ state: 'error', detail: (error as Error).message });
       }
     })();
 

@@ -11,7 +11,7 @@ import { useEmailNotifications } from '../../../hooks/useEmailNotifications';
 import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
 import { useClientConfig } from '../../../hooks/useClientConfig';
-import { enableWebPush } from '../../../hooks/useWebPush';
+import { enableWebPush, useWebPushStatus } from '../../../hooks/useWebPush';
 
 function EmailNotification() {
   const mx = useMatrixClient();
@@ -89,6 +89,7 @@ function EmailNotification() {
 export function SystemNotification() {
   const mx = useMatrixClient();
   const clientConfig = useClientConfig();
+  const webPushStatus = useWebPushStatus();
   const notifPermission = usePermissionState('notifications', getNotificationState());
   const [showNotifications, setShowNotifications] = useSetting(settingsAtom, 'showNotifications');
   const [isNotificationSounds, setIsNotificationSounds] = useSetting(
@@ -125,7 +126,22 @@ export function SystemNotification() {
                   : 'Notifications are not supported by the system.'}
               </Text>
             ) : (
-              <span>Show desktop notifications when message arrive.</span>
+              <>
+                <span>Show desktop notifications when message arrive.</span>
+                {clientConfig.webPush && (
+                  <Text
+                    as="div"
+                    size="T200"
+                    style={{
+                      color:
+                        webPushStatus.state === 'ok' ? color.Success.Main : color.Critical.Main,
+                    }}
+                  >
+                    Push: {webPushStatus.state}
+                    {webPushStatus.detail ? ` — ${webPushStatus.detail}` : ''}
+                  </Text>
+                )}
+              </>
             )
           }
           after={

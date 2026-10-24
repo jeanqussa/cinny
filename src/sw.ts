@@ -168,10 +168,12 @@ type PushPayload = {
 const ICON = '/public/android/android-chrome-192x192.png';
 
 function notificationTarget(data: PushPayload): string {
+  // Deliberately room-level, not `/home/<room>/<event>/`: the event form loads a
+  // timeline window that ends at that event, so tapping a notification for an
+  // older message dropped the user into history instead of the live end of the
+  // conversation. The notification is for the newest message anyway.
   if (!data.room_id) return '/';
-  const room = encodeURIComponent(data.room_id);
-  if (!data.event_id) return `/home/${room}/`;
-  return `/home/${room}/${encodeURIComponent(data.event_id)}/`;
+  return `/home/${encodeURIComponent(data.room_id)}/`;
 }
 
 /**
