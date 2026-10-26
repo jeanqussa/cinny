@@ -35,6 +35,23 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register(swUrl).then(sendSessionToSW);
   navigator.serviceWorker.ready.then(sendSessionToSW);
 
+  // A new worker takes over (this one calls skipWaiting on install): load the bundle it
+  // was built with instead of staying on the previous one. reloadClients() in sw.ts does
+  // the same for pages too stale to have this listener.
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+
+  // Ask for a fresh worker whenever the app comes back to the foreground, so a deploy
+  // does not wait for the browser's own update schedule.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    navigator.serviceWorker.ready.then((registration) => registration.update()).catch(() => undefined);
+  });
+
   navigator.serviceWorker.addEventListener('message', (ev) => {
     const { type } = ev.data ?? {};
 
