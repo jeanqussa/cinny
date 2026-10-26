@@ -7,8 +7,9 @@ import {
   roomIdToTypingMembersAtom,
 } from '../state/typingMembers';
 
-const typingReceiptEqual = (a: TypingReceipt, b: TypingReceipt): boolean =>
-  a.userId === b.userId && a.ts === b.ts;
+// `ts` is bookkeeping for receipt expiry: a refresh of an unchanged typing set must not
+// re-render the typing bar, so the comparison only looks at who is typing.
+const typingReceiptEqual = (a: TypingReceipt, b: TypingReceipt): boolean => a.userId === b.userId;
 
 const equalTypingMembers = (x: TypingReceipt[], y: TypingReceipt[]): boolean => {
   if (x.length !== y.length) return false;

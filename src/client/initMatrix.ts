@@ -1,6 +1,7 @@
 import { createClient, MatrixClient, IndexedDBStore, IndexedDBCryptoStore } from 'matrix-js-sdk';
 
 import { cryptoCallbacks } from './secretStorageKeys';
+import { installTypingRefreshHook } from './typingRefresh';
 import { clearNavToActivePathStore } from '../app/state/navToActivePath';
 import { pushSessionToSW } from '../sw-session';
 
@@ -12,6 +13,8 @@ type Session = {
 };
 
 export const initClient = async (session: Session): Promise<MatrixClient> => {
+  installTypingRefreshHook();
+
   const indexedDBStore = new IndexedDBStore({
     indexedDB: global.indexedDB,
     localStorage: global.localStorage,
