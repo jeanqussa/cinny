@@ -30,12 +30,11 @@ export function SyncStatus({ mx }: SyncStatusProps) {
     }, [])
   );
 
-  if (
-    (stateData.current === SyncState.Prepared ||
-      stateData.current === SyncState.Syncing ||
-      stateData.current === SyncState.Catchup) &&
-    stateData.previous !== SyncState.Syncing
-  ) {
+  // "Connecting..." means "not live yet". Once a sync response has been processed
+  // the state is Syncing, which is proof the connection works — waiting for a
+  // *second* response to hide the banner left it on screen for a whole long-poll
+  // timeout after every reconnect.
+  if (stateData.current === SyncState.Prepared || stateData.current === SyncState.Catchup) {
     return (
       <Box direction="Column" shrink="No">
         <Box
